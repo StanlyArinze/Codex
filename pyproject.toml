@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smartbudget"
-version = "0.1.0"
-description = "MVP local de finanças pessoais com categorização inteligente"
+version = "0.2.0"
+description = "MVP SaaS de finanças pessoais com categorização inteligente"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
