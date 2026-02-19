@@ -83,6 +83,13 @@ button:active { transform: translateY(1px) scale(.99); }
 .big-value { font-size: 1.55rem; font-weight: 700; margin: .35rem 0; }
 .muted { opacity: .9; margin: 0; }
 
+.destaque .valor-income,
+.destaque .valor-expense,
+.destaque .muted,
+.destaque .muted .valor {
+  color: #ffffff !important;
+}
+
 .insight {
   background: #eef2ff;
   border-left: 4px solid var(--primary);
