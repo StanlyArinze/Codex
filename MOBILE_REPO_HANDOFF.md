@@ -1,22 +1,21 @@
-# IA Finance Mobile - Repositório separado iniciado
+# IA Finance Mobile - Status atual
 
-Conforme solicitado, a versão mobile foi iniciada em um repositório separado local:
+A versão mobile agora está **dentro deste repositório principal**.
 
-- Caminho: `/workspace/IAFinanceMobile`
-- Repositório Git: inicializado em `main`
-- Commit inicial: `chore: bootstrap IA Finance mobile repo with Expo starter`
+## Localização
+- Pasta: `mobile/`
 
 ## O que já foi criado
 - Base Expo + React Native + TypeScript
-- Estrutura inicial com Expo Router (`app/_layout.tsx`, `app/index.tsx`)
+- Estrutura inicial com Expo Router (`mobile/app/_layout.tsx`, `mobile/app/index.tsx`)
 - Tela inicial com cards de **Saldo** e **Gastos**
-- Arquivos de configuração (`package.json`, `app.json`, `babel.config.js`, `tsconfig.json`)
+- Arquivos de configuração (`mobile/package.json`, `mobile/app.json`, `mobile/babel.config.js`, `mobile/tsconfig.json`)
 
-## Como publicar no GitHub (exemplo)
+## Como rodar
 ```bash
-cd /workspace/IAFinanceMobile
-git remote add origin <URL_DO_REPO_MOBILE>
-git push -u origin main
+cd mobile
+npm install
+npm run start
 ```
 
 ## Próximos passos sugeridos

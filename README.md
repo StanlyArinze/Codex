@@ -59,3 +59,14 @@ PYTHONPATH=src pytest -q
 1. Integração real com LLM para categorização.
 2. Metas por categoria e alertas.
 3. Deploy (Render/Fly/Vercel + API).
+
+
+## Versão mobile
+
+A base inicial do app mobile está em `mobile/`.
+
+```bash
+cd mobile
+npm install
+npm run start
+```
