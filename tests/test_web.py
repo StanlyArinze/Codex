@@ -1,10 +1,11 @@
 from urllib.parse import parse_qs
 
-from smartbudget.web.app import ledger, render_dashboard, save_transaction
+from smartbudget.web.app import ledger, render_dashboard, repository, save_transaction
 
 
 def setup_function() -> None:
     ledger.clear()
+    repository.clear_transactions()
 
 
 def test_dashboard_loads():
@@ -22,3 +23,15 @@ def test_save_transaction_and_render():
     html = render_dashboard()
     assert "Uber centro" in html
     assert "Transporte" in html
+
+
+def test_data_survives_memory_reset():
+    save_transaction(
+        parse_qs("transaction_type=income&amount=5000&description=Salario&txn_date=2026-02-19")
+    )
+
+    ledger.clear()
+    html = render_dashboard()
+
+    assert "Salario" in html
+    assert "R$ 5000.00" in html

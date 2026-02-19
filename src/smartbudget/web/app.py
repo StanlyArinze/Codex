@@ -8,15 +8,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
 from smartbudget.ledger import Ledger
+from smartbudget.repositories import TransactionRepository
 
 ledger = Ledger()
+repository = TransactionRepository()
 
 
 def _money(value: Decimal) -> str:
     return f"R$ {value:.2f}"
 
 
+def load_transactions_from_db() -> None:
+    ledger.clear()
+    for txn in repository.list_transactions():
+        ledger.record_transaction(txn)
+
+
 def render_dashboard(error: str | None = None) -> str:
+    load_transactions_from_db()
     today = date.today()
     summary = ledger.monthly_summary(today.year, today.month)
     insight = ledger.monthly_insight(today.year, today.month)
@@ -106,10 +115,11 @@ def save_transaction(form_data: dict[str, list[str]]) -> str | None:
         return "A descrição é obrigatória."
 
     if txn_type == "income":
-        ledger.add_income(amount, description, txn_date)
+        txn = ledger.add_income(amount, description, txn_date)
     else:
-        ledger.add_expense(amount, description, txn_date)
+        txn = ledger.add_expense(amount, description, txn_date)
 
+    repository.insert_transaction(txn)
     return None
 
 

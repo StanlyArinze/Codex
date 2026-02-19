@@ -41,6 +41,9 @@ class Ledger:
     def clear(self) -> None:
         self._transactions.clear()
 
+    def record_transaction(self, txn: Transaction) -> None:
+        self._transactions.append(txn)
+
     def monthly_summary(self, year: int, month: int) -> MonthlySummary:
         income = Decimal("0")
         expense = Decimal("0")
