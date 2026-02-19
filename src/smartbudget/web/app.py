@@ -170,11 +170,15 @@ def render_dashboard(user_name: str, user_id: int, error: str | None = None, per
     if summary.total_income > 0:
         expense_ratio = ((summary.total_expense / summary.total_income) * Decimal("100")).quantize(Decimal("0.1"))
 
+    status_text = "Saudável" if expense_ratio < 70 else "Atenção"
+    status_class = "status-bom" if expense_ratio < 70 else "status-alerta"
+
     pie_gradient, pie_legend = _expense_chart(year, month)
 
     rows = "".join(
-        f"<tr><td>{txn.date}</td><td>{TYPE_LABELS[txn.type.value]}</td><td>{escape(txn.category)}</td>"
-        f"<td>{escape(txn.description)}</td><td>{_money(txn.amount)}</td></tr>"
+        f"<tr><td>{txn.date}</td><td><span class='tipo tipo-{txn.type.value}'>{TYPE_LABELS[txn.type.value]}</span></td>"
+        f"<td>{escape(txn.category)}</td><td>{escape(txn.description)}</td>"
+        f"<td class='valor valor-{txn.type.value}'>{_money(txn.amount)}</td></tr>"
         for txn in reversed(ledger.transactions)
         if txn.date.year == year and txn.date.month == month
     )
@@ -196,10 +200,29 @@ def render_dashboard(user_name: str, user_id: int, error: str | None = None, per
     <header class='hero header-row'>
       <h1>IA Finance</h1>
       <div class='user-area'>
+        <button id='btn-config' type='button' class='ghost-btn'>Configurações</button>
         <span>Olá, {escape(user_name)}</span>
         <form method='post' action='/logout'><button type='submit' class='ghost-btn'>Sair</button></form>
       </div>
     </header>
+
+    <section class='card config-panel' id='config-panel' hidden>
+      <h2>Personalizar aparência</h2>
+      <div class='config-grid'>
+        <label>Tema
+          <select id='theme-select'>
+            <option value='light'>Claro</option>
+            <option value='dark'>Escuro</option>
+          </select>
+        </label>
+        <label>Cor de Entrada
+          <input id='income-color' type='color' value='#16a34a'>
+        </label>
+        <label>Cor de Saída
+          <input id='expense-color' type='color' value='#dc2626'>
+        </label>
+      </div>
+    </section>
 
     <section class='card filter-card'>
       <form method='get' action='/' class='filter-form'>
@@ -214,12 +237,12 @@ def render_dashboard(user_name: str, user_id: int, error: str | None = None, per
       <article class='card destaque saldo-card'>
         <h2>Saldo do mês</h2>
         <p class='big-value'>{_money(summary.balance)}</p>
-        <p class='muted'>Entrada total: {_money(summary.total_income)}</p>
+        <p class='muted'>Entrada total: <span class='valor valor-income'>{_money(summary.total_income)}</span></p>
       </article>
 
       <article class='card destaque gasto-card'>
         <h2>Gasto do mês</h2>
-        <p class='big-value'>{_money(summary.total_expense)}</p>
+        <p class='big-value valor valor-expense'>{_money(summary.total_expense)}</p>
         <p class='muted'>Comprometido da entrada: {expense_ratio}%</p>
       </article>
 
@@ -227,7 +250,7 @@ def render_dashboard(user_name: str, user_id: int, error: str | None = None, per
         <h2>Indicadores</h2>
         <ul>
           <li><strong>Categoria com maior gasto:</strong> {escape(top_category)}</li>
-          <li><strong>Status financeiro:</strong> {'Atenção' if expense_ratio >= 70 else 'Saudável'}</li>
+          <li><strong>Status financeiro:</strong> <span class='{status_class}'>{status_text}</span></li>
         </ul>
         <p class='insight'>{escape(insight)}</p>
       </article>
@@ -273,6 +296,42 @@ def render_dashboard(user_name: str, user_id: int, error: str | None = None, per
       </table>
     </section>
   </main>
+
+  <script>
+    const KEY = 'ia_finance_settings';
+    const defaults = {{ theme: 'light', incomeColor: '#16a34a', expenseColor: '#dc2626' }};
+    const settings = Object.assign(defaults, JSON.parse(localStorage.getItem(KEY) || '{{}}'));
+
+    const applySettings = () => {{
+      document.body.dataset.theme = settings.theme;
+      document.documentElement.style.setProperty('--income-color', settings.incomeColor);
+      document.documentElement.style.setProperty('--expense-color', settings.expenseColor);
+      document.documentElement.style.setProperty('--status-good', settings.incomeColor);
+    }};
+
+    applySettings();
+
+    const panel = document.getElementById('config-panel');
+    const btnConfig = document.getElementById('btn-config');
+    btnConfig.addEventListener('click', () => {{ panel.hidden = !panel.hidden; }});
+
+    const themeSelect = document.getElementById('theme-select');
+    const incomeColor = document.getElementById('income-color');
+    const expenseColor = document.getElementById('expense-color');
+
+    themeSelect.value = settings.theme;
+    incomeColor.value = settings.incomeColor;
+    expenseColor.value = settings.expenseColor;
+
+    const persist = () => {{
+      localStorage.setItem(KEY, JSON.stringify(settings));
+      applySettings();
+    }};
+
+    themeSelect.addEventListener('change', (event) => {{ settings.theme = event.target.value; persist(); }});
+    incomeColor.addEventListener('input', (event) => {{ settings.incomeColor = event.target.value; persist(); }});
+    expenseColor.addEventListener('input', (event) => {{ settings.expenseColor = event.target.value; persist(); }});
+  </script>
 </body>
 </html>"""
 
@@ -321,7 +380,10 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/static/styles.css":
-            with open("src/smartbudget/web/static/styles.css", "rb") as file:
+            from pathlib import Path
+
+            css_path = Path(__file__).resolve().parent / "static" / "styles.css"
+            with css_path.open("rb") as file:
                 css = file.read()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/css; charset=utf-8")
@@ -391,7 +453,9 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
             user_id, user_name = user
             error = save_transaction(user_id, form_data)
             if error:
-                self._send_html(render_dashboard(user_name=user_name, user_id=user_id, error=error), status=HTTPStatus.BAD_REQUEST)
+                self._send_html(
+                    render_dashboard(user_name=user_name, user_id=user_id, error=error), status=HTTPStatus.BAD_REQUEST
+                )
                 return
 
             self.send_response(HTTPStatus.SEE_OTHER)

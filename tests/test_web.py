@@ -31,6 +31,7 @@ def test_save_transaction_and_render_for_user():
     assert "Uber centro" in html
     assert "Transporte" in html
     assert "Saída" in html
+    assert "tipo-expense" in html
 
 
 def test_data_isolated_by_user():
@@ -68,3 +69,12 @@ def test_period_filter_hides_other_month_transactions():
     february = render_dashboard(user_name="Ana", user_id=int(user), period="2026-02")
     assert "Mercado Fevereiro" in february
     assert "Mercado Janeiro" not in february
+
+
+def test_status_financeiro_destacado():
+    ok, user = repository.create_user("Carla", "carla@teste.com", "1234")
+    assert ok
+    save_transaction(int(user), parse_qs("transaction_type=income&amount=1000&description=Salario&txn_date=2026-02-10"))
+    save_transaction(int(user), parse_qs("transaction_type=expense&amount=200&description=mercado&txn_date=2026-02-10"))
+    html = render_dashboard(user_name="Carla", user_id=int(user), period="2026-02")
+    assert "status-bom" in html
