@@ -12,7 +12,9 @@ Projeto inicial de portfólio para **finanças pessoais com IA**, com interface 
   - filtro por período (mês/ano),
   - indicador de categoria com maior gasto,
   - percentual da receita comprometida,
-  - tabela de transações por período.
+  - tabela de transações por período,
+  - visual renovado com tema colorido,
+  - gráfico de pizza de gastos por categoria com animação.
 - Persistência local em SQLite (dados não somem ao reiniciar o servidor).
 - Suite de testes para domínio, web e persistência.
 

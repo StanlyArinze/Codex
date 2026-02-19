@@ -12,6 +12,7 @@ def test_dashboard_loads():
     html = render_dashboard()
     assert "SmartBudget AI SaaS" in html
     assert "Aplicar filtro" in html
+    assert "Gráfico de pizza" in html
 
 
 def test_save_transaction_and_render():
@@ -52,3 +53,14 @@ def test_period_filter_hides_other_month_transactions():
     february = render_dashboard(period="2026-02")
     assert "Mercado Fevereiro" in february
     assert "Mercado Janeiro" not in february
+
+
+def test_chart_legend_and_labels_in_ptbr():
+    save_transaction(
+        parse_qs("transaction_type=expense&amount=300&description=mercado&txn_date=2026-02-10")
+    )
+
+    html = render_dashboard(period="2026-02")
+    assert "Saldo (entrada)" in html
+    assert "Gasto" in html
+    assert "Alimentação" in html

@@ -41,6 +41,41 @@ def load_transactions_from_db() -> None:
         ledger.record_transaction(txn)
 
 
+def _expense_chart(year: int, month: int) -> tuple[str, str]:
+    palette = ["#ff6b6b", "#4ecdc4", "#ffe66d", "#5f6caf", "#f7a072", "#5aa9e6", "#c77dff"]
+    totals: dict[str, Decimal] = {}
+
+    for txn in ledger.transactions:
+        if txn.date.year == year and txn.date.month == month and txn.type.value == "expense":
+            totals[txn.category] = totals.get(txn.category, Decimal("0")) + txn.amount
+
+    total_expense = sum(totals.values(), Decimal("0"))
+    if total_expense <= 0:
+        return "conic-gradient(#dbeafe 0deg 360deg)", "<li>Sem gastos no período.</li>"
+
+    current_angle = Decimal("0")
+    gradient_parts: list[str] = []
+    legend_items: list[str] = []
+
+    for idx, (category, amount) in enumerate(sorted(totals.items(), key=lambda item: item[1], reverse=True)):
+        color = palette[idx % len(palette)]
+        pct = (amount / total_expense) * Decimal("100")
+        angle = (pct / Decimal("100")) * Decimal("360")
+        start = current_angle
+        end = start + angle
+        gradient_parts.append(f"{color} {start:.2f}deg {end:.2f}deg")
+        legend_items.append(
+            "<li>"
+            f"<span class='dot' style='background:{color}'></span>"
+            f"<span>{escape(category)} — {pct.quantize(Decimal('0.1'))}% ({_money(amount)})</span>"
+            "</li>"
+        )
+        current_angle = end
+
+    gradient = "conic-gradient(" + ", ".join(gradient_parts) + ")"
+    return gradient, "".join(legend_items)
+
+
 def render_dashboard(error: str | None = None, period: str | None = None) -> str:
     load_transactions_from_db()
     year, month = _parse_period(period)
@@ -53,6 +88,8 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
     expense_ratio = Decimal("0")
     if summary.total_income > 0:
         expense_ratio = ((summary.total_expense / summary.total_income) * Decimal("100")).quantize(Decimal("0.1"))
+
+    pie_gradient, pie_legend = _expense_chart(year, month)
 
     rows = "".join(
         f"<tr><td>{txn.date}</td><td>{txn.type.value}</td><td>{escape(txn.category)}</td>"
@@ -75,12 +112,14 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
 </head>
 <body>
   <main class='container'>
-    <h1>SmartBudget AI SaaS</h1>
-    <p class='subtitle'>Filtro mensal + indicadores de gastos para análise rápida.</p>
+    <header class='hero'>
+      <h1>SmartBudget AI SaaS</h1>
+      <p class='subtitle'>Sua central de gastos em português-BR, com visual moderno e insights claros.</p>
+    </header>
 
     <section class='card'>
       <form method='get' action='/' class='filter-form'>
-        <label>Período
+        <label>Período de análise
           <input type='month' name='period' value='{period_value}'>
         </label>
         <button type='submit'>Aplicar filtro</button>
@@ -88,22 +127,35 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
     </section>
 
     <section class='grid metrics'>
-      <article class='card'>
-        <h2>Resumo {summary.month}</h2>
-        <ul>
-          <li><strong>Receita:</strong> {_money(summary.total_income)}</li>
-          <li><strong>Gastos:</strong> {_money(summary.total_expense)}</li>
-          <li><strong>Saldo:</strong> {_money(summary.balance)}</li>
-        </ul>
+      <article class='card destaque saldo-card'>
+        <h2>Saldo do mês</h2>
+        <p class='big-value'>{_money(summary.balance)}</p>
+        <p class='muted'>Receita total: {_money(summary.total_income)}</p>
+      </article>
+
+      <article class='card destaque gasto-card'>
+        <h2>Gasto do mês</h2>
+        <p class='big-value'>{_money(summary.total_expense)}</p>
+        <p class='muted'>Comprometido da receita: {expense_ratio}%</p>
       </article>
 
       <article class='card'>
         <h2>Indicadores</h2>
         <ul>
-          <li><strong>Top categoria:</strong> {escape(top_category)}</li>
-          <li><strong>% da receita comprometida:</strong> {expense_ratio}%</li>
+          <li><strong>Categoria com maior gasto:</strong> {escape(top_category)}</li>
+          <li><strong>Status financeiro:</strong> {'Atenção' if expense_ratio >= 70 else 'Saudável'}</li>
         </ul>
         <p class='insight'>{escape(insight)}</p>
+      </article>
+    </section>
+
+    <section class='grid'>
+      <article class='card'>
+        <h2>Gráfico de pizza — Gastos por categoria</h2>
+        <div class='chart-wrap'>
+          <div class='pie-chart' style='background:{pie_gradient}' aria-label='Gráfico de pizza dos gastos por categoria'></div>
+          <ul class='legend'>{pie_legend}</ul>
+        </div>
       </article>
 
       <article class='card'>
@@ -112,20 +164,20 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
         <form method='post' action='/transactions' class='form'>
           <label>Tipo
             <select name='transaction_type'>
-              <option value='expense'>Despesa</option>
-              <option value='income'>Receita</option>
+              <option value='expense'>Gasto</option>
+              <option value='income'>Saldo (entrada)</option>
             </select>
           </label>
           <label>Valor
             <input type='number' step='0.01' min='0' name='amount' required>
           </label>
           <label>Descrição
-            <input type='text' name='description' placeholder='Ex: Uber centro' required>
+            <input type='text' name='description' placeholder='Ex: Mercado, aluguel, salário...' required>
           </label>
           <label>Data
             <input type='date' name='txn_date' value='{date.today().isoformat()}' required>
           </label>
-          <button type='submit'>Salvar</button>
+          <button type='submit'>Salvar transação</button>
         </form>
       </article>
     </section>
