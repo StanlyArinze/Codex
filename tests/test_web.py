@@ -1,66 +1,70 @@
 from urllib.parse import parse_qs
 
-from smartbudget.web.app import ledger, render_dashboard, repository, save_transaction
+from smartbudget.web.app import ledger, render_auth_page, render_dashboard, repository, save_transaction
 
 
 def setup_function() -> None:
     ledger.clear()
     repository.clear_transactions()
+    repository.clear_users()
 
 
-def test_dashboard_loads():
-    html = render_dashboard()
-    assert "SmartBudget AI SaaS" in html
-    assert "Aplicar filtro" in html
-    assert "Gráfico de pizza" in html
+def test_auth_page_loads():
+    html = render_auth_page()
+    assert "IA Finance" in html
+    assert "Entrar" in html
+    assert "Criar conta" in html
 
 
-def test_save_transaction_and_render():
+def test_save_transaction_and_render_for_user():
+    ok, created = repository.create_user("Ana", "ana@example.com", "1234")
+    assert ok is True
+    user_id = int(created)
+
     error = save_transaction(
-        parse_qs("transaction_type=expense&amount=120&description=Uber+centro&txn_date=2026-02-19")
+        user_id,
+        parse_qs("transaction_type=expense&amount=120&description=Uber+centro&txn_date=2026-02-19"),
     )
     assert error is None
 
-    html = render_dashboard(period="2026-02")
+    html = render_dashboard(user_name="Ana", user_id=user_id, period="2026-02")
     assert "Uber centro" in html
     assert "Transporte" in html
+    assert "Saída" in html
 
 
-def test_data_survives_memory_reset():
-    save_transaction(
-        parse_qs("transaction_type=income&amount=5000&description=Salario&txn_date=2026-02-19")
-    )
+def test_data_isolated_by_user():
+    ok_1, user_1 = repository.create_user("Ana", "ana@teste.com", "1234")
+    ok_2, user_2 = repository.create_user("Bruno", "bruno@teste.com", "1234")
+    assert ok_1 and ok_2
 
-    ledger.clear()
-    html = render_dashboard(period="2026-02")
+    save_transaction(int(user_1), parse_qs("transaction_type=income&amount=5000&description=Salario&txn_date=2026-02-19"))
+    save_transaction(int(user_2), parse_qs("transaction_type=expense&amount=200&description=Mercado&txn_date=2026-02-19"))
 
-    assert "Salario" in html
-    assert "R$ 5000.00" in html
+    html_ana = render_dashboard(user_name="Ana", user_id=int(user_1), period="2026-02")
+    html_bruno = render_dashboard(user_name="Bruno", user_id=int(user_2), period="2026-02")
+
+    assert "Salario" in html_ana
+    assert "<td>Mercado</td>" not in html_ana
+    assert "<td>Mercado</td>" in html_bruno
+    assert "<td>Salario</td>" not in html_bruno
 
 
 def test_period_filter_hides_other_month_transactions():
+    ok, user = repository.create_user("Ana", "ana2@teste.com", "1234")
+    assert ok
+
     save_transaction(
-        parse_qs("transaction_type=expense&amount=100&description=Mercado+Janeiro&txn_date=2026-01-10")
+        int(user), parse_qs("transaction_type=expense&amount=100&description=Mercado+Janeiro&txn_date=2026-01-10")
     )
     save_transaction(
-        parse_qs("transaction_type=expense&amount=200&description=Mercado+Fevereiro&txn_date=2026-02-10")
+        int(user), parse_qs("transaction_type=expense&amount=200&description=Mercado+Fevereiro&txn_date=2026-02-10")
     )
 
-    january = render_dashboard(period="2026-01")
+    january = render_dashboard(user_name="Ana", user_id=int(user), period="2026-01")
     assert "Mercado Janeiro" in january
     assert "Mercado Fevereiro" not in january
 
-    february = render_dashboard(period="2026-02")
+    february = render_dashboard(user_name="Ana", user_id=int(user), period="2026-02")
     assert "Mercado Fevereiro" in february
     assert "Mercado Janeiro" not in february
-
-
-def test_chart_legend_and_labels_in_ptbr():
-    save_transaction(
-        parse_qs("transaction_type=expense&amount=300&description=mercado&txn_date=2026-02-10")
-    )
-
-    html = render_dashboard(period="2026-02")
-    assert "Saldo (entrada)" in html
-    assert "Gasto" in html
-    assert "Alimentação" in html

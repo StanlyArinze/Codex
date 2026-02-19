@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import secrets
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from html import escape
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -12,6 +14,12 @@ from smartbudget.repositories import TransactionRepository
 
 ledger = Ledger()
 repository = TransactionRepository()
+sessions: dict[str, int] = {}
+
+TYPE_LABELS = {
+    "income": "Entrada",
+    "expense": "Saída",
+}
 
 
 def _money(value: Decimal) -> str:
@@ -35,9 +43,29 @@ def _parse_period(period: str | None) -> tuple[int, int]:
     return today.year, today.month
 
 
-def load_transactions_from_db() -> None:
+def _get_session_token(handler: BaseHTTPRequestHandler) -> str | None:
+    raw = handler.headers.get("Cookie")
+    if not raw:
+        return None
+    cookie = SimpleCookie()
+    cookie.load(raw)
+    morsel = cookie.get("iafinance_session")
+    return morsel.value if morsel else None
+
+
+def _get_user(handler: BaseHTTPRequestHandler) -> tuple[int, str] | None:
+    token = _get_session_token(handler)
+    if not token:
+        return None
+    user_id = sessions.get(token)
+    if not user_id:
+        return None
+    return repository.get_user(user_id)
+
+
+def load_transactions_from_db(user_id: int) -> None:
     ledger.clear()
-    for txn in repository.list_transactions():
+    for txn in repository.list_transactions(user_id):
         ledger.record_transaction(txn)
 
 
@@ -76,8 +104,61 @@ def _expense_chart(year: int, month: int) -> tuple[str, str]:
     return gradient, "".join(legend_items)
 
 
-def render_dashboard(error: str | None = None, period: str | None = None) -> str:
-    load_transactions_from_db()
+def render_auth_page(message: str | None = None) -> str:
+    message_html = f"<p class='error'>{escape(message)}</p>" if message else ""
+    return f"""<!doctype html>
+<html lang='pt-BR'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>IA Finance</title>
+  <link rel='stylesheet' href='/static/styles.css'>
+</head>
+<body>
+  <main class='container'>
+    <header class='hero'>
+      <h1>IA Finance</h1>
+      <p class='auth-subtitle'>Faça login para acessar seu dashboard financeiro.</p>
+    </header>
+
+    <section class='grid'>
+      <article class='card'>
+        <h2>Entrar</h2>
+        {message_html}
+        <form method='post' action='/login' class='form'>
+          <label>E-mail
+            <input type='email' name='email' required>
+          </label>
+          <label>Senha
+            <input type='password' name='password' required>
+          </label>
+          <button type='submit'>Entrar</button>
+        </form>
+      </article>
+
+      <article class='card'>
+        <h2>Criar conta</h2>
+        <form method='post' action='/register' class='form'>
+          <label>Nome
+            <input type='text' name='name' required>
+          </label>
+          <label>E-mail
+            <input type='email' name='email' required>
+          </label>
+          <label>Senha
+            <input type='password' name='password' minlength='4' required>
+          </label>
+          <button type='submit'>Criar conta</button>
+        </form>
+      </article>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_dashboard(user_name: str, user_id: int, error: str | None = None, period: str | None = None) -> str:
+    load_transactions_from_db(user_id)
     year, month = _parse_period(period)
     period_value = f"{year:04d}-{month:02d}"
 
@@ -92,7 +173,7 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
     pie_gradient, pie_legend = _expense_chart(year, month)
 
     rows = "".join(
-        f"<tr><td>{txn.date}</td><td>{txn.type.value}</td><td>{escape(txn.category)}</td>"
+        f"<tr><td>{txn.date}</td><td>{TYPE_LABELS[txn.type.value]}</td><td>{escape(txn.category)}</td>"
         f"<td>{escape(txn.description)}</td><td>{_money(txn.amount)}</td></tr>"
         for txn in reversed(ledger.transactions)
         if txn.date.year == year and txn.date.month == month
@@ -107,22 +188,25 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
 <head>
   <meta charset='utf-8'>
   <meta name='viewport' content='width=device-width, initial-scale=1'>
-  <title>SmartBudget AI SaaS</title>
+  <title>IA Finance</title>
   <link rel='stylesheet' href='/static/styles.css'>
 </head>
 <body>
   <main class='container'>
-    <header class='hero'>
-      <h1>SmartBudget AI SaaS</h1>
-      <p class='subtitle'>Sua central de gastos em português-BR, com visual moderno e insights claros.</p>
+    <header class='hero header-row'>
+      <h1>IA Finance</h1>
+      <div class='user-area'>
+        <span>Olá, {escape(user_name)}</span>
+        <form method='post' action='/logout'><button type='submit' class='ghost-btn'>Sair</button></form>
+      </div>
     </header>
 
-    <section class='card'>
+    <section class='card filter-card'>
       <form method='get' action='/' class='filter-form'>
-        <label>Período de análise
+        <label>Filtrar período
           <input type='month' name='period' value='{period_value}'>
         </label>
-        <button type='submit'>Aplicar filtro</button>
+        <button type='submit'>Filtrar</button>
       </form>
     </section>
 
@@ -130,13 +214,13 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
       <article class='card destaque saldo-card'>
         <h2>Saldo do mês</h2>
         <p class='big-value'>{_money(summary.balance)}</p>
-        <p class='muted'>Receita total: {_money(summary.total_income)}</p>
+        <p class='muted'>Entrada total: {_money(summary.total_income)}</p>
       </article>
 
       <article class='card destaque gasto-card'>
         <h2>Gasto do mês</h2>
         <p class='big-value'>{_money(summary.total_expense)}</p>
-        <p class='muted'>Comprometido da receita: {expense_ratio}%</p>
+        <p class='muted'>Comprometido da entrada: {expense_ratio}%</p>
       </article>
 
       <article class='card'>
@@ -151,9 +235,9 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
 
     <section class='grid'>
       <article class='card'>
-        <h2>Gráfico de pizza — Gastos por categoria</h2>
+        <h2>Gastos</h2>
         <div class='chart-wrap'>
-          <div class='pie-chart' style='background:{pie_gradient}' aria-label='Gráfico de pizza dos gastos por categoria'></div>
+          <div class='pie-chart' style='background:{pie_gradient}' aria-label='Gastos por categoria'></div>
           <ul class='legend'>{pie_legend}</ul>
         </div>
       </article>
@@ -162,12 +246,6 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
         <h2>Nova transação</h2>
         {error_html}
         <form method='post' action='/transactions' class='form'>
-          <label>Tipo
-            <select name='transaction_type'>
-              <option value='expense'>Gasto</option>
-              <option value='income'>Saldo (entrada)</option>
-            </select>
-          </label>
           <label>Valor
             <input type='number' step='0.01' min='0' name='amount' required>
           </label>
@@ -177,7 +255,10 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
           <label>Data
             <input type='date' name='txn_date' value='{date.today().isoformat()}' required>
           </label>
-          <button type='submit'>Salvar transação</button>
+          <div class='type-buttons'>
+            <button type='submit' name='transaction_type' value='expense' class='btn-expense'>Salvar saída</button>
+            <button type='submit' name='transaction_type' value='income' class='btn-income'>Salvar entrada</button>
+          </div>
         </form>
       </article>
     </section>
@@ -196,7 +277,7 @@ def render_dashboard(error: str | None = None, period: str | None = None) -> str
 </html>"""
 
 
-def save_transaction(form_data: dict[str, list[str]]) -> str | None:
+def save_transaction(user_id: int, form_data: dict[str, list[str]]) -> str | None:
     try:
         txn_type = form_data.get("transaction_type", [""])[0]
         amount = Decimal(form_data.get("amount", [""])[0])
@@ -213,8 +294,16 @@ def save_transaction(form_data: dict[str, list[str]]) -> str | None:
     else:
         txn = ledger.add_expense(amount, description, txn_date)
 
-    repository.insert_transaction(txn)
+    repository.insert_transaction(user_id, txn)
     return None
+
+
+def _set_session_cookie(handler: BaseHTTPRequestHandler, token: str) -> None:
+    handler.send_header("Set-Cookie", f"iafinance_session={token}; HttpOnly; Path=/; SameSite=Lax")
+
+
+def _clear_session_cookie(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("Set-Cookie", "iafinance_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax")
 
 
 class SmartBudgetHandler(BaseHTTPRequestHandler):
@@ -223,7 +312,12 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
         if parsed.path == "/":
             query = parse_qs(parsed.query)
             period = query.get("period", [None])[0]
-            self._send_html(render_dashboard(period=period))
+            user = _get_user(self)
+            if not user:
+                self._send_html(render_auth_page())
+                return
+            user_id, user_name = user
+            self._send_html(render_dashboard(user_name=user_name, user_id=user_id, period=period))
             return
 
         if parsed.path == "/static/styles.css":
@@ -238,22 +332,74 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/transactions":
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-
         content_length = int(self.headers.get("Content-Length", "0"))
         data = self.rfile.read(content_length).decode("utf-8")
         form_data = parse_qs(data)
-        error = save_transaction(form_data)
 
-        if error:
-            self._send_html(render_dashboard(error), status=HTTPStatus.BAD_REQUEST)
+        if self.path == "/register":
+            name = form_data.get("name", [""])[0]
+            email = form_data.get("email", [""])[0]
+            password = form_data.get("password", [""])[0]
+            ok, payload = repository.create_user(name, email, password)
+            if not ok:
+                self._send_html(render_auth_page(str(payload)), status=HTTPStatus.BAD_REQUEST)
+                return
+
+            token = secrets.token_urlsafe(32)
+            sessions[token] = int(payload)
+            self.send_response(HTTPStatus.SEE_OTHER)
+            _set_session_cookie(self, token)
+            self.send_header("Location", "/")
+            self.end_headers()
             return
 
-        self.send_response(HTTPStatus.SEE_OTHER)
-        self.send_header("Location", "/")
-        self.end_headers()
+        if self.path == "/login":
+            email = form_data.get("email", [""])[0]
+            password = form_data.get("password", [""])[0]
+            ok, payload = repository.authenticate_user(email, password)
+            if not ok:
+                self._send_html(render_auth_page(str(payload)), status=HTTPStatus.UNAUTHORIZED)
+                return
+
+            user_id, _ = payload
+            token = secrets.token_urlsafe(32)
+            sessions[token] = user_id
+            self.send_response(HTTPStatus.SEE_OTHER)
+            _set_session_cookie(self, token)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
+        if self.path == "/logout":
+            token = _get_session_token(self)
+            if token:
+                sessions.pop(token, None)
+            self.send_response(HTTPStatus.SEE_OTHER)
+            _clear_session_cookie(self)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
+        if self.path == "/transactions":
+            user = _get_user(self)
+            if not user:
+                self.send_response(HTTPStatus.SEE_OTHER)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+
+            user_id, user_name = user
+            error = save_transaction(user_id, form_data)
+            if error:
+                self._send_html(render_dashboard(user_name=user_name, user_id=user_id, error=error), status=HTTPStatus.BAD_REQUEST)
+                return
+
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -269,7 +415,7 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
 
 def run(host: str = "0.0.0.0", port: int = 8000) -> None:
     server = ThreadingHTTPServer((host, port), SmartBudgetHandler)
-    print(f"SmartBudget rodando em http://{host}:{port}")
+    print(f"IA Finance rodando em http://{host}:{port}")
     server.serve_forever()
 
 
