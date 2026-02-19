@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from smartbudget.ledger import Ledger
 from smartbudget.repositories import TransactionRepository
@@ -18,25 +18,50 @@ def _money(value: Decimal) -> str:
     return f"R$ {value:.2f}"
 
 
+def _parse_period(period: str | None) -> tuple[int, int]:
+    today = date.today()
+    if not period:
+        return today.year, today.month
+
+    try:
+        year_str, month_str = period.split("-", maxsplit=1)
+        year = int(year_str)
+        month = int(month_str)
+        if 1 <= month <= 12:
+            return year, month
+    except ValueError:
+        pass
+
+    return today.year, today.month
+
+
 def load_transactions_from_db() -> None:
     ledger.clear()
     for txn in repository.list_transactions():
         ledger.record_transaction(txn)
 
 
-def render_dashboard(error: str | None = None) -> str:
+def render_dashboard(error: str | None = None, period: str | None = None) -> str:
     load_transactions_from_db()
-    today = date.today()
-    summary = ledger.monthly_summary(today.year, today.month)
-    insight = ledger.monthly_insight(today.year, today.month)
+    year, month = _parse_period(period)
+    period_value = f"{year:04d}-{month:02d}"
+
+    summary = ledger.monthly_summary(year, month)
+    top_category = ledger.top_expense_category(year, month)
+    insight = ledger.monthly_insight(year, month)
+
+    expense_ratio = Decimal("0")
+    if summary.total_income > 0:
+        expense_ratio = ((summary.total_expense / summary.total_income) * Decimal("100")).quantize(Decimal("0.1"))
 
     rows = "".join(
         f"<tr><td>{txn.date}</td><td>{txn.type.value}</td><td>{escape(txn.category)}</td>"
         f"<td>{escape(txn.description)}</td><td>{_money(txn.amount)}</td></tr>"
         for txn in reversed(ledger.transactions)
+        if txn.date.year == year and txn.date.month == month
     )
     if not rows:
-        rows = '<tr><td colspan="5">Nenhuma transação cadastrada ainda.</td></tr>'
+        rows = '<tr><td colspan="5">Nenhuma transação cadastrada para o período selecionado.</td></tr>'
 
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
 
@@ -51,15 +76,32 @@ def render_dashboard(error: str | None = None) -> str:
 <body>
   <main class='container'>
     <h1>SmartBudget AI SaaS</h1>
-    <p class='subtitle'>Teste no navegador: registre receitas/despesas e veja o insight mensal.</p>
+    <p class='subtitle'>Filtro mensal + indicadores de gastos para análise rápida.</p>
 
-    <section class='grid'>
+    <section class='card'>
+      <form method='get' action='/' class='filter-form'>
+        <label>Período
+          <input type='month' name='period' value='{period_value}'>
+        </label>
+        <button type='submit'>Aplicar filtro</button>
+      </form>
+    </section>
+
+    <section class='grid metrics'>
       <article class='card'>
         <h2>Resumo {summary.month}</h2>
         <ul>
           <li><strong>Receita:</strong> {_money(summary.total_income)}</li>
           <li><strong>Gastos:</strong> {_money(summary.total_expense)}</li>
           <li><strong>Saldo:</strong> {_money(summary.balance)}</li>
+        </ul>
+      </article>
+
+      <article class='card'>
+        <h2>Indicadores</h2>
+        <ul>
+          <li><strong>Top categoria:</strong> {escape(top_category)}</li>
+          <li><strong>% da receita comprometida:</strong> {expense_ratio}%</li>
         </ul>
         <p class='insight'>{escape(insight)}</p>
       </article>
@@ -81,7 +123,7 @@ def render_dashboard(error: str | None = None) -> str:
             <input type='text' name='description' placeholder='Ex: Uber centro' required>
           </label>
           <label>Data
-            <input type='date' name='txn_date' value='{today.isoformat()}' required>
+            <input type='date' name='txn_date' value='{date.today().isoformat()}' required>
           </label>
           <button type='submit'>Salvar</button>
         </form>
@@ -89,7 +131,7 @@ def render_dashboard(error: str | None = None) -> str:
     </section>
 
     <section class='card'>
-      <h2>Últimas transações</h2>
+      <h2>Transações do período</h2>
       <table>
         <thead>
           <tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Descrição</th><th>Valor</th></tr>
@@ -125,11 +167,14 @@ def save_transaction(form_data: dict[str, list[str]]) -> str | None:
 
 class SmartBudgetHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/":
-            self._send_html(render_dashboard())
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            query = parse_qs(parsed.query)
+            period = query.get("period", [None])[0]
+            self._send_html(render_dashboard(period=period))
             return
 
-        if self.path == "/static/styles.css":
+        if parsed.path == "/static/styles.css":
             with open("src/smartbudget/web/static/styles.css", "rb") as file:
                 css = file.read()
             self.send_response(HTTPStatus.OK)

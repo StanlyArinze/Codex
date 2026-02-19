@@ -8,8 +8,12 @@ Projeto inicial de portfólio para **finanças pessoais com IA**, com interface 
 - Categorização automática de despesas por palavras-chave.
 - Resumo mensal (receita, gasto e saldo).
 - Insight mensal em linguagem natural com base no comportamento financeiro.
-- Dashboard web (formulário + tabela de transações + cards de resumo).
-- **Persistência local em SQLite** (dados não somem ao reiniciar o servidor).
+- Dashboard web com:
+  - filtro por período (mês/ano),
+  - indicador de categoria com maior gasto,
+  - percentual da receita comprometida,
+  - tabela de transações por período.
+- Persistência local em SQLite (dados não somem ao reiniciar o servidor).
 - Suite de testes para domínio, web e persistência.
 
 ## Estrutura
