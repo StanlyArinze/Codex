@@ -99,3 +99,20 @@ Se ainda houver conflito de resolução no seu npm, use temporariamente:
 ```powershell
 npm install --legacy-peer-deps
 ```
+
+
+## Erro `Cannot find module babel-preset-expo` (tela branca / code 500)
+Se aparecer esse erro no terminal do Expo, instale o preset e sincronize dependências:
+
+```powershell
+cd .\mobile
+npm install
+npx expo install babel-preset-expo
+npx expo install --fix
+```
+
+Depois reinicie o Metro limpando cache:
+
+```powershell
+npm run start -- --clear
+```
