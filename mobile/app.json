@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "IA Finance",
+    "slug": "ia-finance-mobile",
+    "scheme": "iafinance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"]
+  }
+}
