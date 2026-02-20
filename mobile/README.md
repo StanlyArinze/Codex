@@ -11,7 +11,9 @@ Versão mobile iniciada dentro do repositório principal em `mobile/`.
 - Login
 - Cadastro
 - Sessão persistente local
-- Dashboard mobile com teste de conexão ao backend
+- Dashboard mobile com dados reais (saldo, gastos, insight e transações)
+- Filtro por período (`YYYY-MM`) no app
+- Cadastro de transações direto no app (entrada/saída)
 
 ## Como rodar
 ```bash
@@ -39,7 +41,7 @@ npm run start
    Exemplo: `http://192.168.0.10:8000`
 
 ## Próximas tarefas
-1. Dashboard com dados estruturados via API JSON (não só leitura de HTML).
-2. Cadastro de transações direto no app mobile.
-3. Filtro por período no app.
+1. Melhorar UX do filtro por período (seletor de mês nativo).
+2. Incluir gráfico de categorias no app mobile.
+3. Padronizar mensagens de erro por endpoint.
 4. Build Android `.aab` para Play Store.

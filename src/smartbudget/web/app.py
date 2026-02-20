@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from html import escape
@@ -155,6 +156,60 @@ def render_auth_page(message: str | None = None) -> str:
   </main>
 </body>
 </html>"""
+
+
+def render_health_payload() -> bytes:
+    return json.dumps({"status": "ok", "service": "ia-finance"}, ensure_ascii=False).encode("utf-8")
+
+
+def render_session_payload(user: tuple[int, str] | None) -> bytes:
+    if not user:
+        return json.dumps({"authenticated": False}, ensure_ascii=False).encode("utf-8")
+
+    user_id, user_name = user
+    return json.dumps(
+        {
+            "authenticated": True,
+            "user": {
+                "id": user_id,
+                "name": user_name,
+            },
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def render_dashboard_payload(user_id: int, period: str | None = None) -> bytes:
+    load_transactions_from_db(user_id)
+    year, month = _parse_period(period)
+    summary = ledger.monthly_summary(year, month)
+
+    transactions = []
+    for txn in ledger.transactions:
+        if txn.date.year == year and txn.date.month == month:
+            transactions.append(
+                {
+                    "date": txn.date.isoformat(),
+                    "description": txn.description,
+                    "category": txn.category,
+                    "type": txn.type.value,
+                    "amount": str(txn.amount),
+                }
+            )
+
+    payload = {
+        "period": f"{year:04d}-{month:02d}",
+        "summary": {
+            "income": str(summary.total_income),
+            "expense": str(summary.total_expense),
+            "balance": str(summary.balance),
+        },
+        "top_category": ledger.top_expense_category(year, month),
+        "insight": ledger.monthly_insight(year, month),
+        "transactions": transactions,
+    }
+
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
 def render_dashboard(user_name: str, user_id: int, error: str | None = None, period: str | None = None) -> str:
@@ -368,6 +423,27 @@ def _clear_session_cookie(handler: BaseHTTPRequestHandler) -> None:
 class SmartBudgetHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/health":
+            self._send_json(render_health_payload())
+            return
+
+        if parsed.path == "/api/session":
+            self._send_json(render_session_payload(_get_user(self)))
+            return
+
+        if parsed.path == "/api/dashboard":
+            user = _get_user(self)
+            if not user:
+                self._send_json(json.dumps({"error": "unauthorized"}, ensure_ascii=False).encode("utf-8"), status=HTTPStatus.UNAUTHORIZED)
+                return
+
+            query = parse_qs(parsed.query)
+            period = query.get("period", [None])[0]
+            user_id, _ = user
+            self._send_json(render_dashboard_payload(user_id=user_id, period=period))
+            return
+
         if parsed.path == "/":
             query = parse_qs(parsed.query)
             period = query.get("period", [None])[0]
@@ -442,6 +518,21 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if self.path == "/api/transactions":
+            user = _get_user(self)
+            if not user:
+                self._send_json(json.dumps({"error": "unauthorized"}, ensure_ascii=False).encode("utf-8"), status=HTTPStatus.UNAUTHORIZED)
+                return
+
+            user_id, _ = user
+            error = save_transaction(user_id, form_data)
+            if error:
+                self._send_json(json.dumps({"ok": False, "error": error}, ensure_ascii=False).encode("utf-8"), status=HTTPStatus.BAD_REQUEST)
+                return
+
+            self._send_json(json.dumps({"ok": True}, ensure_ascii=False).encode("utf-8"), status=HTTPStatus.CREATED)
+            return
+
         if self.path == "/transactions":
             user = _get_user(self)
             if not user:
@@ -467,6 +558,14 @@ class SmartBudgetHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+
+    def _send_json(self, body: bytes, status: HTTPStatus = HTTPStatus.OK) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_html(self, body: str, status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = body.encode("utf-8")

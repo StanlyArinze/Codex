@@ -1,6 +1,16 @@
+import json
 from urllib.parse import parse_qs
 
-from smartbudget.web.app import ledger, render_auth_page, render_dashboard, repository, save_transaction
+from smartbudget.web.app import (
+    ledger,
+    render_auth_page,
+    render_dashboard,
+    render_dashboard_payload,
+    render_health_payload,
+    render_session_payload,
+    repository,
+    save_transaction,
+)
 
 
 def setup_function() -> None:
@@ -78,3 +88,32 @@ def test_status_financeiro_destacado():
     save_transaction(int(user), parse_qs("transaction_type=expense&amount=200&description=mercado&txn_date=2026-02-10"))
     html = render_dashboard(user_name="Carla", user_id=int(user), period="2026-02")
     assert "status-bom" in html
+
+
+def test_render_health_payload_json():
+    payload = json.loads(render_health_payload().decode("utf-8"))
+    assert payload == {"status": "ok", "service": "ia-finance"}
+
+
+def test_render_session_payload_json():
+    anonymous = json.loads(render_session_payload(None).decode("utf-8"))
+    assert anonymous == {"authenticated": False}
+
+    authenticated = json.loads(render_session_payload((7, "Lia")).decode("utf-8"))
+    assert authenticated == {"authenticated": True, "user": {"id": 7, "name": "Lia"}}
+
+
+def test_render_dashboard_payload_json():
+    ok, user = repository.create_user("Dani", "dani@teste.com", "1234")
+    assert ok
+
+    save_transaction(int(user), parse_qs("transaction_type=income&amount=2500&description=Freela&txn_date=2026-03-05"))
+    save_transaction(int(user), parse_qs("transaction_type=expense&amount=500&description=Aluguel&txn_date=2026-03-08"))
+
+    payload = json.loads(render_dashboard_payload(user_id=int(user), period="2026-03").decode("utf-8"))
+
+    assert payload["period"] == "2026-03"
+    assert payload["summary"] == {"income": "2500", "expense": "500", "balance": "2000"}
+    assert payload["top_category"]
+    assert payload["insight"]
+    assert len(payload["transactions"]) == 2

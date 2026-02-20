@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 
-import { fetchHome, login as apiLogin, logout as apiLogout, register as apiRegister } from "./api";
+import { fetchSession, login as apiLogin, logout as apiLogout, register as apiRegister } from "./api";
 
 type AuthContextType = {
   ready: boolean;
@@ -26,41 +26,58 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
-    const response = await apiLogin({ email, password });
-    if (!response.ok) {
-      return "Falha no login. Verifique e-mail e senha.";
-    }
+    try {
+      const response = await apiLogin({ email, password });
+      if (!response.ok) {
+        return "Falha no login. Verifique e-mail e senha.";
+      }
 
-    await SecureStore.setItemAsync(KEY, "1");
-    setSignedIn(true);
-    return null;
+      await SecureStore.setItemAsync(KEY, "1");
+      setSignedIn(true);
+      return null;
+    } catch {
+      return "Não foi possível conectar ao servidor.";
+    }
   };
 
   const signUp = async (name: string, email: string, password: string): Promise<string | null> => {
-    const response = await apiRegister({ name, email, password });
-    if (!response.ok) {
-      return "Não foi possível criar conta. Confira os dados.";
-    }
+    try {
+      const response = await apiRegister({ name, email, password });
+      if (!response.ok) {
+        return "Não foi possível criar conta. Confira os dados.";
+      }
 
-    await SecureStore.setItemAsync(KEY, "1");
-    setSignedIn(true);
-    return null;
+      await SecureStore.setItemAsync(KEY, "1");
+      setSignedIn(true);
+      return null;
+    } catch {
+      return "Não foi possível conectar ao servidor.";
+    }
   };
 
   const signOut = async () => {
-    await apiLogout();
-    await SecureStore.deleteItemAsync(KEY);
-    setSignedIn(false);
+    try {
+      await apiLogout();
+    } finally {
+      await SecureStore.deleteItemAsync(KEY);
+      setSignedIn(false);
+    }
   };
 
   useEffect(() => {
     if (!signedIn) return;
-    fetchHome().then((html) => {
-      if (html.includes("Entrar") && html.includes("Criar conta")) {
-        SecureStore.deleteItemAsync(KEY);
+
+    fetchSession()
+      .then(async (session) => {
+        if (!session?.authenticated) {
+          await SecureStore.deleteItemAsync(KEY);
+          setSignedIn(false);
+        }
+      })
+      .catch(async () => {
+        await SecureStore.deleteItemAsync(KEY);
         setSignedIn(false);
-      }
-    });
+      });
   }, [signedIn]);
 
   const value = useMemo(
