@@ -61,3 +61,23 @@ No **PowerShell**, para subir com variável de ambiente:
 ```powershell
 $env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
 ```
+
+
+## Compatibilidade com Expo Go (Windows)
+Este projeto foi atualizado para **Expo SDK 54**.
+
+Se você estava com dependências antigas, rode no **PowerShell**:
+
+```powershell
+cd .\mobile
+if (Test-Path .\node_modules) { Remove-Item -Recurse -Force .\node_modules }
+if (Test-Path .\package-lock.json) { Remove-Item -Force .\package-lock.json }
+npm install
+npx expo install --fix
+```
+
+Depois inicie:
+
+```powershell
+$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
+```
