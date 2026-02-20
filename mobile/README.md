@@ -81,3 +81,21 @@ Depois inicie:
 ```powershell
 $env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
 ```
+
+
+## Erro de `ERESOLVE` com `@types/react` no Windows
+Se o `npm install` falhar com conflito entre `react-native@0.81.x` e `@types/react`, rode no PowerShell:
+
+```powershell
+cd .\mobile
+if (Test-Path .\node_modules) { Remove-Item -Recurse -Force .\node_modules }
+if (Test-Path .\package-lock.json) { Remove-Item -Force .\package-lock.json }
+npm install
+npx expo install --fix
+```
+
+Se ainda houver conflito de resolução no seu npm, use temporariamente:
+
+```powershell
+npm install --legacy-peer-deps
+```
