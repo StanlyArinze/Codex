@@ -45,3 +45,19 @@ npm run start
 2. Incluir gráfico de categorias no app mobile.
 3. Padronizar mensagens de erro por endpoint.
 4. Build Android `.aab` para Play Store.
+
+
+## Erro comum: `expo-asset` cannot be found
+Se aparecer esse erro ao rodar `npm run start`, execute:
+
+```bash
+cd mobile
+npm install
+npx expo install expo-asset
+```
+
+No **PowerShell**, para subir com variável de ambiente:
+
+```powershell
+$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
+```
