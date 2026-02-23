@@ -114,3 +114,17 @@ Depois reinicie o Metro limpando cache:
 ```powershell
 npm run start -- --clear
 ```
+
+
+## Preparação para Play Store
+Status atual: iniciado ✅
+
+Checklist técnico pendente antes de publicação:
+1. Definir package id Android final (`android.package`) no `app.json`.
+2. Gerar ícones/splash definitivos e adaptar para dark/light.
+3. Configurar EAS Build (`eas.json`) e gerar `.aab` assinado.
+4. Revisar permissões e política de privacidade (coleta de dados/cache local).
+5. Criar versão release com testes em dispositivo real (Android 11+).
+6. Preparar ficha da loja (descrição, screenshots, classificação etária, contato).
+
+Observação: como o app está offline-first, já atende bem o uso local sem backend, mas ainda falta pipeline de release para Play Store.

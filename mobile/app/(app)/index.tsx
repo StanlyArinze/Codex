@@ -1,6 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useColorScheme } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useColorScheme
+} from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 
 type TransactionType = "income" | "expense";
 
@@ -26,17 +38,21 @@ type Palette = {
   purple: string;
   income: string;
   expense: string;
+  shadow: string;
 };
 
 const STORAGE_TRANSACTIONS = "ia_finance_local_transactions";
 const STORAGE_THEME = "ia_finance_theme_mode";
+
+function monthKey(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function money(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function monthLabel(period: string): string {
-  if (!period) return "Todos os meses";
   const [year, month] = period.split("-");
   if (!year || !month) return period;
   return `${month}/${year}`;
@@ -77,7 +93,8 @@ function getPalette(theme: ThemeMode, systemScheme: "light" | "dark" | null): Pa
       yellow: "#facc15",
       purple: "#a855f7",
       income: "#22c55e",
-      expense: "#fb7185"
+      expense: "#fb7185",
+      shadow: "#000"
     };
   }
 
@@ -90,8 +107,24 @@ function getPalette(theme: ThemeMode, systemScheme: "light" | "dark" | null): Pa
     yellow: "#facc15",
     purple: "#7e22ce",
     income: "#15803d",
-    expense: "#be123c"
+    expense: "#be123c",
+    shadow: "#1e293b"
   };
+}
+
+function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
+  const rad = (angle - 90) * (Math.PI / 180);
+  return {
+    x: cx + r * Math.cos(rad),
+    y: cy + r * Math.sin(rad)
+  };
+}
+
+function slicePath(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
+  const start = polarToCartesian(cx, cy, r, endAngle);
+  const end = polarToCartesian(cx, cy, r, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y} Z`;
 }
 
 export default function DashboardScreen() {
@@ -100,7 +133,7 @@ export default function DashboardScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
 
-  const [period, setPeriod] = useState("");
+  const [period, setPeriod] = useState(monthKey());
   const [status, setStatus] = useState("");
   const [transactions, setTransactions] = useState<LocalTransaction[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -109,10 +142,19 @@ export default function DashboardScreen() {
   const [description, setDescription] = useState("");
   const [txnDate, setTxnDate] = useState(new Date().toISOString().slice(0, 10));
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
   const monthOptions = useMemo(() => generateMonthOptions(24), []);
   const palette = getPalette(themeMode, systemScheme);
 
   useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true
+    }).start();
+
     AsyncStorage.getItem(STORAGE_THEME).then((saved) => {
       if (saved === "light" || saved === "dark" || saved === "system") {
         setThemeMode(saved);
@@ -128,7 +170,7 @@ export default function DashboardScreen() {
         setStatus("Não foi possível carregar dados locais.");
       }
     });
-  }, []);
+  }, [fadeAnim]);
 
   const saveTransactions = async (items: LocalTransaction[]) => {
     setTransactions(items);
@@ -137,10 +179,7 @@ export default function DashboardScreen() {
 
   const filteredTransactions = useMemo(() => {
     const selected = period.trim();
-    const base = selected
-      ? transactions.filter((txn) => txn.txn_date.startsWith(selected))
-      : transactions;
-
+    const base = transactions.filter((txn) => txn.txn_date.startsWith(selected));
     return [...base].sort((a, b) => b.created_at - a.created_at);
   }, [transactions, period]);
 
@@ -158,15 +197,24 @@ export default function DashboardScreen() {
     return { income, expense, balance: income - expense };
   }, [filteredTransactions]);
 
-  const hint = useMemo(() => {
-    if (totals.expense === 0 && totals.income === 0) {
-      return "Adicione sua primeira transação para receber dicas.";
+  const pieData = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const txn of filteredTransactions) {
+      if (txn.type !== "expense") continue;
+      const current = map.get(txn.category) ?? 0;
+      map.set(txn.category, current + Number(txn.amount));
     }
-    if (totals.balance >= 0) {
-      return "Boa! Você está mantendo saldo positivo neste período.";
-    }
-    return "Atenção: gastos acima das entradas. Revise despesas fixas.";
-  }, [totals]);
+
+    const total = Array.from(map.values()).reduce((acc, value) => acc + value, 0);
+    const colors = ["#facc15", "#a855f7", "#38bdf8", "#fb7185", "#22c55e", "#f97316"];
+
+    return Array.from(map.entries()).map(([category, value], idx) => ({
+      category,
+      value,
+      percent: total > 0 ? (value / total) * 100 : 0,
+      color: colors[idx % colors.length]
+    }));
+  }, [filteredTransactions]);
 
   const clearForm = () => {
     setAmount("");
@@ -228,12 +276,11 @@ export default function DashboardScreen() {
     setStatus("Editando transação...");
   };
 
-  const removeTransaction = async (id: string) => {
-    const next = transactions.filter((txn) => txn.id !== id);
+  const removeEditingTransaction = async () => {
+    if (!editingId) return;
+    const next = transactions.filter((txn) => txn.id !== editingId);
     await saveTransactions(next);
-    if (editingId === id) {
-      clearForm();
-    }
+    clearForm();
     setStatus("Transação removida.");
   };
 
@@ -242,109 +289,162 @@ export default function DashboardScreen() {
     await AsyncStorage.setItem(STORAGE_THEME, mode);
   };
 
+  let currentStart = 0;
+  const pieSize = 170;
+  const radius = pieSize / 2;
+
   return (
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg }]}> 
-      <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: palette.text }]}>IA Finance Mobile</Text>
-        <Pressable onPress={() => setSettingsOpen(true)} style={[styles.settingsBtn, { borderColor: palette.border }]}> 
-          <Text style={{ fontSize: 18 }}>⚙️</Text>
-        </Pressable>
-      </View>
-
-      {status ? <Text style={[styles.status, { color: palette.expense }]}>{status}</Text> : null}
-
-      <View style={styles.filterRow}>
-        <Pressable
-          style={[styles.monthPickerBtn, { backgroundColor: palette.card, borderColor: palette.border }]}
-          onPress={() => setPeriodPickerOpen(true)}
-        >
-          <Text style={[styles.monthPickerText, { color: palette.text }]}>📅 {monthLabel(period)}</Text>
-        </Pressable>
-        <Pressable style={[styles.actionButton, { backgroundColor: palette.yellow }]} onPress={() => setPeriod("") }>
-          <Text style={[styles.actionButtonText, { color: "#1f2937" }]}>Limpar</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.cardRow}>
-        <View style={[styles.card, { backgroundColor: palette.purple }]}> 
-          <Text style={styles.cardLabel}>Saldo</Text>
-          <Text style={styles.cardValue}>{money(totals.balance)}</Text>
-        </View>
-        <View style={[styles.card, { backgroundColor: palette.yellow }]}> 
-          <Text style={[styles.cardLabel, { color: "#1f2937" }]}>Gastos</Text>
-          <Text style={[styles.cardValue, { color: "#1f2937" }]}>{money(totals.expense)}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.infoCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
-        <Text style={[styles.infoLabel, { color: palette.muted }]}>Período</Text>
-        <Text style={[styles.infoValue, { color: palette.text }]}>{monthLabel(period)}</Text>
-        <Text style={[styles.infoLabel, { color: palette.muted }]}>Dica</Text>
-        <Text style={[styles.infoValue, { color: palette.text }]}>{hint}</Text>
-      </View>
-
-      <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
-        <Text style={[styles.sectionTitle, { color: palette.text }]}>
-          {editingId ? "Editar transação" : "Nova transação"}
-        </Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
-          placeholder="Valor (ex: 120.50)"
-          placeholderTextColor={palette.muted}
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="decimal-pad"
-        />
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
-          placeholder="Descrição"
-          placeholderTextColor={palette.muted}
-          value={description}
-          onChangeText={setDescription}
-        />
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
-          placeholder="Data (YYYY-MM-DD)"
-          placeholderTextColor={palette.muted}
-          autoCapitalize="none"
-          value={txnDate}
-          onChangeText={setTxnDate}
-        />
-
-        <View style={styles.typeButtons}>
-          <Pressable style={[styles.typeButton, { backgroundColor: palette.yellow }]} onPress={() => handleAddTransaction("expense")}> 
-            <Text style={[styles.typeButtonText, { color: "#1f2937" }]}>{editingId ? "Salvar saída" : "Nova saída"}</Text>
-          </Pressable>
-          <Pressable style={[styles.typeButton, { backgroundColor: palette.purple }]} onPress={() => handleAddTransaction("income")}> 
-            <Text style={styles.typeButtonText}>{editingId ? "Salvar entrada" : "Nova entrada"}</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
+        <View style={styles.headerRow}>
+          <Text style={[styles.title, { color: palette.text }]}>IA Finance Mobile</Text>
+          <Pressable onPress={() => setSettingsOpen(true)} style={[styles.settingsBtn, { borderColor: palette.border }]}> 
+            <Text style={{ fontSize: 18 }}>⚙️</Text>
           </Pressable>
         </View>
 
-        {editingId ? (
-          <Pressable style={[styles.cancelBtn, { borderColor: palette.border }]} onPress={clearForm}>
-            <Text style={{ color: palette.text, textAlign: "center", fontWeight: "700" }}>Cancelar edição</Text>
-          </Pressable>
-        ) : null}
-      </View>
+        {status ? <Text style={[styles.status, { color: palette.expense }]}>{status}</Text> : null}
 
-      <Text style={[styles.sectionTitle, { color: palette.text }]}>Transações ({filteredTransactions.length})</Text>
-      {filteredTransactions.map((txn) => (
-        <View key={txn.id} style={[styles.txnRow, { backgroundColor: palette.card, borderColor: palette.border }]}> 
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.txnDescription, { color: palette.text }]}>{txn.description}</Text>
-            <Text style={[styles.txnMeta, { color: palette.muted }]}>{txn.category} • {txn.txn_date}</Text>
+        <View style={styles.filterRow}>
+          <Pressable
+            style={[styles.monthPickerBtn, { backgroundColor: palette.card, borderColor: palette.border }]}
+            onPress={() => setPeriodPickerOpen(true)}
+          >
+            <Text style={[styles.monthPickerText, { color: palette.text }]}>📅 {monthLabel(period)}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.cardRow}>
+          <View style={[styles.card, styles.emphasisBtn, { backgroundColor: palette.purple, shadowColor: palette.shadow }]}> 
+            <Text style={styles.cardLabel}>Saldo</Text>
+            <Text style={styles.cardValue}>{money(totals.balance)}</Text>
           </View>
-          <Text style={{ color: txn.type === "income" ? palette.income : palette.expense, fontWeight: "700", marginRight: 8 }}>
-            {txn.type === "income" ? "+" : "-"} {money(Number(txn.amount))}
-          </Text>
-          <Pressable onPress={() => startEdit(txn)} style={styles.iconBtn}>
-            <Text>✏️</Text>
-          </Pressable>
-          <Pressable onPress={() => removeTransaction(txn.id)} style={styles.iconBtn}>
-            <Text>🗑️</Text>
-          </Pressable>
+          <View style={[styles.card, styles.emphasisBtn, { backgroundColor: palette.yellow, shadowColor: palette.shadow }]}> 
+            <Text style={[styles.cardLabel, { color: "#1f2937" }]}>Gastos</Text>
+            <Text style={[styles.cardValue, { color: "#1f2937" }]}>{money(totals.expense)}</Text>
+          </View>
         </View>
-      ))}
+
+        <View style={[styles.chartCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Gastos por categoria</Text>
+          <View style={styles.chartRow}>
+            <Svg width={pieSize} height={pieSize}>
+              {pieData.length === 0 ? (
+                <Circle cx={radius} cy={radius} r={radius - 2} fill={palette.border} />
+              ) : (
+                pieData.map((item) => {
+                  const angle = (item.percent / 100) * 360;
+                  const start = currentStart;
+                  const end = currentStart + angle;
+                  currentStart += angle;
+
+                  if (angle <= 0) return null;
+
+                  return <Path key={item.category} d={slicePath(radius, radius, radius - 2, start, end)} fill={item.color} />;
+                })
+              )}
+            </Svg>
+
+            <View style={{ flex: 1, gap: 6 }}>
+              {pieData.length === 0 ? (
+                <Text style={{ color: palette.muted }}>Sem gastos neste mês.</Text>
+              ) : (
+                pieData.map((item) => (
+                  <View key={`legend-${item.category}`} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                    <Text style={{ color: palette.text, flex: 1 }} numberOfLines={1}>{item.category}</Text>
+                    <Text style={{ color: palette.muted }}>{money(item.value)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.sequenceCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Sequência financeira</Text>
+          <View style={styles.sequenceRow}>
+            <Text style={{ color: palette.muted, width: 80 }}>Entradas</Text>
+            <View style={[styles.sequenceBar, { backgroundColor: palette.income, width: `${Math.min(100, totals.income > 0 ? 100 : 0)}%` }]} />
+            <Text style={{ color: palette.text }}>{money(totals.income)}</Text>
+          </View>
+          <View style={styles.sequenceRow}>
+            <Text style={{ color: palette.muted, width: 80 }}>Gastos</Text>
+            <View style={[styles.sequenceBar, { backgroundColor: palette.expense, width: `${Math.min(100, totals.expense > 0 ? (totals.income > 0 ? (totals.expense / totals.income) * 100 : 100) : 0)}%` }]} />
+            <Text style={{ color: palette.text }}>{money(totals.expense)}</Text>
+          </View>
+          <View style={styles.sequenceRow}>
+            <Text style={{ color: palette.muted, width: 80 }}>Saldo</Text>
+            <View style={[styles.sequenceBar, { backgroundColor: palette.purple, width: `${Math.min(100, Math.max(0, totals.balance > 0 && totals.income > 0 ? (totals.balance / totals.income) * 100 : 0))}%` }]} />
+            <Text style={{ color: palette.text }}>{money(totals.balance)}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>
+            {editingId ? "Editar transação" : "Nova transação"}
+          </Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
+            placeholder="Valor (ex: 120.50)"
+            placeholderTextColor={palette.muted}
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
+            placeholder="Descrição"
+            placeholderTextColor={palette.muted}
+            value={description}
+            onChangeText={setDescription}
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }]}
+            placeholder="Data (YYYY-MM-DD)"
+            placeholderTextColor={palette.muted}
+            autoCapitalize="none"
+            value={txnDate}
+            onChangeText={setTxnDate}
+          />
+
+          <View style={styles.typeButtons}>
+            <Pressable style={[styles.typeButton, styles.emphasisBtn, { backgroundColor: palette.yellow, shadowColor: palette.shadow }]} onPress={() => handleAddTransaction("expense")}> 
+              <Text style={[styles.typeButtonText, { color: "#1f2937" }]}>{editingId ? "Salvar saída" : "Nova saída"}</Text>
+            </Pressable>
+            <Pressable style={[styles.typeButton, styles.emphasisBtn, { backgroundColor: palette.purple, shadowColor: palette.shadow }]} onPress={() => handleAddTransaction("income")}> 
+              <Text style={styles.typeButtonText}>{editingId ? "Salvar entrada" : "Nova entrada"}</Text>
+            </Pressable>
+          </View>
+
+          {editingId ? (
+            <View style={styles.typeButtons}>
+              <Pressable style={[styles.typeButton, { borderColor: palette.border, borderWidth: 1 }]} onPress={clearForm}>
+                <Text style={{ color: palette.text, textAlign: "center", fontWeight: "700" }}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={[styles.typeButton, { backgroundColor: palette.expense }]} onPress={removeEditingTransaction}>
+                <Text style={styles.typeButtonText}>Excluir transação</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Transações ({filteredTransactions.length})</Text>
+        {filteredTransactions.map((txn) => (
+          <View key={txn.id} style={[styles.txnRow, { backgroundColor: palette.card, borderColor: palette.border }]}> 
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.txnDescription, { color: palette.text }]}>{txn.description}</Text>
+              <Text style={[styles.txnMeta, { color: palette.muted }]}>{txn.category} • {txn.txn_date}</Text>
+            </View>
+            <Text style={{ color: txn.type === "income" ? palette.income : palette.expense, fontWeight: "700", marginRight: 8 }}>
+              {txn.type === "income" ? "+" : "-"} {money(Number(txn.amount))}
+            </Text>
+            <Pressable onPress={() => startEdit(txn)} style={styles.iconBtn}>
+              <Text>✏️</Text>
+            </Pressable>
+          </View>
+        ))}
+      </Animated.View>
 
       <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -376,9 +476,6 @@ export default function DashboardScreen() {
           <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border, maxHeight: 420 }]}> 
             <Text style={[styles.modalTitle, { color: palette.text }]}>Selecionar período</Text>
             <ScrollView>
-              <Pressable style={[styles.monthOption, { borderColor: palette.border }]} onPress={() => { setPeriod(""); setPeriodPickerOpen(false); }}>
-                <Text style={{ color: palette.text }}>Todos os meses</Text>
-              </Pressable>
               {monthOptions.map((m) => (
                 <Pressable key={m} style={[styles.monthOption, { borderColor: palette.border }]} onPress={() => { setPeriod(m); setPeriodPickerOpen(false); }}>
                   <Text style={{ color: palette.text }}>📅 {monthLabel(m)}</Text>
@@ -413,19 +510,28 @@ const styles = StyleSheet.create({
   },
   actionButton: { borderRadius: 10, paddingHorizontal: 14, justifyContent: "center" },
   actionButtonText: { fontWeight: "700" },
+  emphasisBtn: {
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.22,
+    shadowRadius: 7,
+    elevation: 6
+  },
   cardRow: { flexDirection: "row", gap: 12 },
   card: { flex: 1, borderRadius: 14, padding: 14 },
   cardLabel: { color: "#fff", fontWeight: "600" },
   cardValue: { color: "#fff", fontSize: 18, fontWeight: "700", marginTop: 6 },
-  infoCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 4 },
-  infoLabel: { fontSize: 12, textTransform: "uppercase" },
-  infoValue: { fontWeight: "600" },
+  chartCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 10 },
+  chartRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 8 },
+  legendDot: { width: 10, height: 10, borderRadius: 999 },
+  sequenceCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  sequenceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sequenceBar: { height: 8, borderRadius: 999, minWidth: 2, flex: 1 },
   formCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
   sectionTitle: { fontWeight: "700" },
   typeButtons: { flexDirection: "row", gap: 8 },
   typeButton: { flex: 1, borderRadius: 10, paddingVertical: 10 },
   typeButtonText: { color: "#fff", textAlign: "center", fontWeight: "700" },
-  cancelBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10 },
   txnRow: {
     flexDirection: "row",
     justifyContent: "space-between",
