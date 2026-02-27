@@ -1,4 +1,4 @@
-# IA Finance Mobile
+# My Finance Mobile
 
 Versão mobile iniciada dentro do repositório principal em `mobile/`.
 
@@ -24,19 +24,13 @@ npm run start -- --clear
 ```
 
 ## Testar no celular (Expo Go)
-1. No **PowerShell** na raiz do projeto (`Codex`), suba o backend:
-   ```powershell
-   $env:PYTHONPATH="src"
-   python -m smartbudget.web.app
-   ```
-2. Em outro terminal PowerShell, suba o mobile:
+1. No **PowerShell**, suba o app mobile:
    ```powershell
    cd .\mobile
-   $env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"
    npm run start -- --clear
    ```
-3. Abra o Expo Go no celular e escaneie o QR code.
-4. Confirme que celular e PC estão na mesma rede Wi‑Fi.
+2. Abra o Expo Go no celular e escaneie o QR code.
+3. Confirme que celular e PC estão na mesma rede Wi‑Fi.
 
 ## Próximas tarefas
 1. Melhorar UX do filtro por período (seletor de mês nativo).
@@ -52,12 +46,6 @@ Se aparecer esse erro ao rodar `npm run start`, execute:
 cd mobile
 npm install
 npx expo install expo-asset
-```
-
-No **PowerShell**, para subir com variável de ambiente:
-
-```powershell
-$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
 ```
 
 
@@ -77,7 +65,6 @@ npx expo install --fix
 Depois inicie:
 
 ```powershell
-$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:8000"; npm run start
 ```
 
 

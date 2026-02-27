@@ -1,4 +1,4 @@
-# IA Finance Mobile - Status atual
+# My Finance Mobile - Status atual
 
 A versão mobile agora está **dentro deste repositório principal**.
 
@@ -19,7 +19,7 @@ npm run start
 ```
 
 ## Próximos passos sugeridos
-1. Conectar login/cadastro com o backend atual.
+1. Refinar experiência local do app (fluxo sem backend).
 2. Persistir sessão no app (secure storage).
-3. Consumir endpoint de dashboard com filtros.
+3. Melhorar gráficos e filtros diretamente no app.
 4. Preparar build `.aab` para Play Store.

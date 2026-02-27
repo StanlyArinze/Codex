@@ -17,7 +17,7 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Entrar no IA Finance</Text>
+      <Text style={styles.title}>Entrar no My Finance</Text>
       <TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={email} onChangeText={setEmail} />
       <TextInput style={styles.input} placeholder="Senha" secureTextEntry value={password} onChangeText={setPassword} />
       {error ? <Text style={styles.error}>{error}</Text> : null}

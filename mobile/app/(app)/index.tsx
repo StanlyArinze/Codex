@@ -143,9 +143,10 @@ export default function DashboardScreen() {
   const [txnDate, setTxnDate] = useState(new Date().toISOString().slice(0, 10));
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
 
   const monthOptions = useMemo(() => generateMonthOptions(24), []);
-  const palette = getPalette(themeMode, systemScheme);
+  const palette = getPalette(themeMode, systemScheme ?? null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -154,6 +155,23 @@ export default function DashboardScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true
     }).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true
+        })
+      ])
+    ).start();
 
     AsyncStorage.getItem(STORAGE_THEME).then((saved) => {
       if (saved === "light" || saved === "dark" || saved === "system") {
@@ -170,7 +188,7 @@ export default function DashboardScreen() {
         setStatus("Não foi possível carregar dados locais.");
       }
     });
-  }, [fadeAnim]);
+  }, [fadeAnim, pulseAnim]);
 
   const saveTransactions = async (items: LocalTransaction[]) => {
     setTransactions(items);
@@ -297,7 +315,7 @@ export default function DashboardScreen() {
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg }]}> 
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: palette.text }]}>IA Finance Mobile</Text>
+          <Text style={[styles.title, { color: palette.text }]}>My Finance</Text>
           <Pressable onPress={() => setSettingsOpen(true)} style={[styles.settingsBtn, { borderColor: palette.border }]}> 
             <Text style={{ fontSize: 18 }}>⚙️</Text>
           </Pressable>
@@ -315,14 +333,42 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.cardRow}>
-          <View style={[styles.card, styles.emphasisBtn, { backgroundColor: palette.purple, shadowColor: palette.shadow }]}> 
+          <Animated.View
+            style={[
+              styles.card,
+              styles.emphasisBtn,
+              {
+                backgroundColor: palette.purple,
+                shadowColor: palette.shadow,
+                transform: [
+                  {
+                    scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] })
+                  }
+                ]
+              }
+            ]}
+          >
             <Text style={styles.cardLabel}>Saldo</Text>
             <Text style={styles.cardValue}>{money(totals.balance)}</Text>
-          </View>
-          <View style={[styles.card, styles.emphasisBtn, { backgroundColor: palette.yellow, shadowColor: palette.shadow }]}> 
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.card,
+              styles.emphasisBtn,
+              {
+                backgroundColor: palette.yellow,
+                shadowColor: palette.shadow,
+                transform: [
+                  {
+                    scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.015] })
+                  }
+                ]
+              }
+            ]}
+          >
             <Text style={[styles.cardLabel, { color: "#1f2937" }]}>Gastos</Text>
             <Text style={[styles.cardValue, { color: "#1f2937" }]}>{money(totals.expense)}</Text>
-          </View>
+          </Animated.View>
         </View>
 
         <View style={[styles.chartCard, { backgroundColor: palette.card, borderColor: palette.border }]}> 
@@ -493,12 +539,12 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 14, flexGrow: 1 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  container: { padding: 20, gap: 16, flexGrow: 1, paddingBottom: 28 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
   title: { fontSize: 28, fontWeight: "700" },
   settingsBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   status: { fontWeight: "600" },
-  filterRow: { flexDirection: "row", gap: 8 },
+  filterRow: { flexDirection: "row", gap: 8, marginTop: 4, marginBottom: 4 },
   monthPickerBtn: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   monthPickerText: { fontWeight: "600" },
   input: {
@@ -516,19 +562,19 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     elevation: 6
   },
-  cardRow: { flexDirection: "row", gap: 12 },
-  card: { flex: 1, borderRadius: 14, padding: 14 },
+  cardRow: { flexDirection: "row", gap: 12, marginBottom: 2 },
+  card: { flex: 1, borderRadius: 14, padding: 16 },
   cardLabel: { color: "#fff", fontWeight: "600" },
   cardValue: { color: "#fff", fontSize: 18, fontWeight: "700", marginTop: 6 },
-  chartCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 10 },
+  chartCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 12, marginTop: 2 },
   chartRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 8 },
   legendDot: { width: 10, height: 10, borderRadius: 999 },
-  sequenceCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  sequenceCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10, marginTop: 2 },
   sequenceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sequenceBar: { height: 8, borderRadius: 999, minWidth: 2, flex: 1 },
-  formCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
-  sectionTitle: { fontWeight: "700" },
+  formCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10, marginTop: 2 },
+  sectionTitle: { fontWeight: "700", marginBottom: 2 },
   typeButtons: { flexDirection: "row", gap: 8 },
   typeButton: { flex: 1, borderRadius: 10, paddingVertical: 10 },
   typeButtonText: { color: "#fff", textAlign: "center", fontWeight: "700" },
@@ -538,8 +584,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     borderWidth: 1,
-    padding: 12,
-    gap: 6
+    padding: 14,
+    gap: 8,
+    marginTop: 4
   },
   txnDescription: { fontWeight: "600" },
   txnMeta: { fontSize: 12, marginTop: 2 },

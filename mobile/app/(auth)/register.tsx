@@ -18,7 +18,7 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Criar conta</Text>
+      <Text style={styles.title}>Criar conta no My Finance</Text>
       <TextInput style={styles.input} placeholder="Nome" value={name} onChangeText={setName} />
       <TextInput style={styles.input} placeholder="E-mail" autoCapitalize="none" value={email} onChangeText={setEmail} />
       <TextInput style={styles.input} placeholder="Senha" secureTextEntry value={password} onChangeText={setPassword} />
