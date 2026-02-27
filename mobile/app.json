@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "My Finance",
+    "slug": "ia-finance-mobile",
+    "scheme": "iafinance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.myfinance.app",
+      "versionCode": 2,
+      "permissions": [
+        "INTERNET"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#5b21b6"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
